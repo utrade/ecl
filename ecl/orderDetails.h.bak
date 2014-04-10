@@ -1,0 +1,134 @@
+#ifndef UT_ECL_ORDER_DETAILS_H
+#define UT_ECL_ORDER_DETAILS_H
+
+#include <quickfix/fix42/NewOrderSingle.h>
+
+#include <boost/unordered_map.hpp>
+#include <boost/thread/mutex.hpp>
+
+namespace UT
+{
+  class EclOrderDetails 
+  {
+    public :
+      struct SingleOrderDetails
+      {
+        FIX::ClOrdID clOrdId ;
+        FIX::Side side ;
+        FIX::SecurityID securityId ;
+      };
+
+      template< class FixOrder >
+        void saveOrderDetails( const FixOrder &order ) ;
+
+      boost::shared_ptr< SingleOrderDetails > 
+        getOrderDetails( const std::string &orderId ) ;
+
+    private :
+
+      typedef 
+        boost::unordered_map< std::string, 
+        boost::shared_ptr< SingleOrderDetails > > OrderDetailsMap ;
+
+      OrderDetailsMap _orderDetails ;
+      OrderDetailsMap::iterator _insertOrderDetailsIterator ;
+      OrderDetailsMap::iterator _eraseOrderDetailsIterator ;
+
+      boost::mutex _mutexForOrderDetails ;
+
+  };
+
+  template< class FixOrder >
+    inline void EclOrderDetails::saveOrderDetails( const FixOrder &order ) 
+    {
+      FIX::OrderID lOrderID ;
+      FIX::Side lSide ;
+      FIX::ClOrdID lClOrdID ;
+      FIX::SecurityID lSecurityID ;
+
+      order.get( lOrderID ) ;
+
+      _mutexForOrderDetails.lock() ;
+
+      _insertOrderDetailsIterator = _orderDetails.find( lOrderID ) ;
+
+      // The order does not exist so add it
+      boost::shared_ptr< SingleOrderDetails > currentOrder ;
+
+      if( _insertOrderDetailsIterator == _orderDetails.end() )
+      {
+        _insertOrderDetailsIterator = _orderDetails.insert( std::make_pair( lOrderID, new SingleOrderDetails() ) ).first ;
+      }
+
+      currentOrder = _insertOrderDetailsIterator->second ;
+
+      currentOrder->side = order.get( lSide ) ;
+      currentOrder->clOrdId = order.get( lClOrdID ) ;
+      currentOrder->securityId = order.get( lSecurityID ) ;
+
+      /* The Order Exists. 
+       *  This means that someone sent a modification request
+       *  while they didn't receive the previous 
+       *  modification response. 
+       * While the probability is almost 0 its better to 
+       *  take care of such a scenario 
+       * I'll insert this order Id as a OrderID + ".1" and so on
+       *  and when I receive a response, I will remove it 
+       *  the same way.
+      else // This should never happen
+      {
+        FIX::OrderID lSecondOrderId ;
+        int counter = 1 ;
+
+        while( _insertOrderDetailsIterator != _orderDetails.end() )
+        {
+          lSecondOrderId = lOrderID.getValue() + "." + StringConverter::toString( counter ) ;
+          _insertOrderDetailsIterator = _orderDetails.find( lSecondOrderId ) ;
+        }
+
+        boost::shared_ptr< SingleOrderDetails > 
+          currentOrder ( new SingleOrderDetails() ) ;
+
+        currentOrder->side = order.get( lSide ) ;
+        currentOrder->clOrdId = order.get( lClOrdID ) ;
+        currentOrder->securityId = order.get( lSecurityID ) ;
+
+        _orderDetails.insert( std::make_pair( lOrderID, currentOrder ) ) ;
+      }
+       */
+
+      _mutexForOrderDetails.unlock() ;
+    }
+
+  boost::shared_ptr< EclOrderDetails::SingleOrderDetails > 
+    inline EclOrderDetails::getOrderDetails( const std::string &orderId ) 
+    {
+      boost::shared_ptr< SingleOrderDetails > returnDetails ;
+
+      _mutexForOrderDetails.lock() ;
+
+      _eraseOrderDetailsIterator = _orderDetails.find( orderId ) ;
+
+      if( _eraseOrderDetailsIterator != _orderDetails.end() )
+      {
+        returnDetails = _eraseOrderDetailsIterator->second ;
+        // _orderDetails.erase( _eraseOrderDetailsIterator ) ;
+      }
+      else
+      {
+        /* Have to add handling if we were not able to find 
+         *  the order Id. 
+         * In such cases, we will loop through the 
+         *  OrderId + ".1" list.
+         * Problem here is that we dont know when to stop
+         *  So I will decide later of how to implement this correctly
+         */
+      }
+
+      _mutexForOrderDetails.unlock() ;
+
+      return returnDetails ;
+    }
+
+}
+#endif // UT_ECL_ORDER_DETAILS_H

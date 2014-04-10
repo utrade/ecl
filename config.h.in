@@ -1,0 +1,10 @@
+#ifndef UTRADE_CONFIG_H
+#define UTRADE_CONFIG_H
+
+#define VERSION_MAJOR @uTrade_VERSION_MAJOR@
+#define VERSION_MINOR @uTrade_VERSION_MINOR@
+#define VERSION_PATCH @uTrade_VERSION_PATCH@
+
+#define VERSION_STRING "@uTrade_VERSION_STRING@"
+
+#endif
